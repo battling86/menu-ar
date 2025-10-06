@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Menú AR – Demo</title>
+  <!-- model-viewer (Web Components) -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <style>
+    :root{
+      --bg:#0b0f14; --card:#111826; --muted:#8aa0b3; --brand:#ffd166; --brand-2:#06d6a0;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu; background:linear-gradient(180deg,#0b0f14,#0b0f14 40%,#09121a); color:#e8eef4}
+    header{padding:18px 20px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #152030}
+    header h1{font-size:18px; margin:0; letter-spacing:.3px}
+    header .badge{font-size:12px; background:linear-gradient(90deg,var(--brand),var(--brand-2)); color:#111; padding:4px 8px; border-radius:999px; font-weight:700}
+
+    .wrap{max-width:1100px; margin:0 auto; padding:18px}
+    .grid{display:grid; grid-template-columns: 1fr; gap:16px}
+    @media (min-width:900px){ .grid{ grid-template-columns: 420px 1fr; } }
+
+    .card{background:var(--card); border:1px solid #162235; border-radius:18px; box-shadow:0 6px 24px rgba(0,0,0,.25)}
+    .card h3{margin:0 0 6px; font-size:16px}
+    .card .body{padding:16px}
+    label{display:block; font-size:13px; color:var(--muted); margin-bottom:8px}
+    select, input[type="text"]{width:100%; padding:10px 12px; border-radius:12px; border:1px solid #27405d; background:#0e1622; color:#e8eef4}
+    button{padding:10px 14px; border-radius:12px; border:1px solid #20324a; background:#132237; color:#e8eef4; cursor:pointer; font-weight:600}
+    button:hover{filter:brightness(1.08)}
+    .row{display:flex; gap:10px; align-items:center}
+    .row.wrap{flex-wrap:wrap}
+    .muted{color:var(--muted); font-size:13px}
+    .pill{display:inline-flex; gap:6px; align-items:center; background:#0e1a28; border:1px dashed #29405b; padding:6px 10px; border-radius:999px; font-size:12px}
+
+    model-viewer{width:100%; height:70vh; background:#0a121d; border-radius:18px 18px 0 0}
+    .mv-footer{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 16px; border-top:1px solid #162235}
+    .tag{font-size:12px; background:#0e1a28; border:1px solid #213149; padding:4px 8px; border-radius:999px}
+    .price{font-weight:800; font-size:18px}
+  </style>
+</head>
+<body>
+  <header>
+    <span class="badge">MVP</span>
+    <h1>Menú AR Interactivo</h1>
+  </header>
+
+  <div class="wrap grid">
+    <!-- Panel izquierdo: controles -->
+    <section class="card">
+      <div class="body">
+        <h3>Selecciona el platillo</h3>
+        <p class="muted">Carga modelos 3D alojados por ti (.glb recomendado). Este demo resuelve por <code>?plato=</code> en la URL y permite cambiar desde el selector.</p>
+        <label for="platoSelect">Platillo</label>
+        <select id="platoSelect"></select>
+        <div class="row" style="margin-top:10px">
+          <button id="btnLoad">Cargar en visor</button>
+          <button id="btnAR">Abrir en AR nativo</button>
+        </div>
+
+        <hr style="margin:16px 0; border:0; border-top:1px solid #1a2a3f" />
+
+        <h3>Comparte por QR</h3>
+        <div class="row wrap">
+          <input type="text" id="shareUrl" readonly>
+          <button id="btnCopy">Copiar URL</button>
+        </div>
+        <p class="muted">Imprime un QR que apunte a esta URL para cada platillo. Cualquier lector abrirá el visor con el modelo correcto.</p>
+
+        <hr style="margin:16px 0; border:0; border-top:1px solid #1a2a3f" />
+
+        <h3>Tips de captura</h3>
+        <ul class="muted">
+          <li>Iluminación difusa, evita reflejos en salsas o brillos.</li>
+          <li>Gira el plato y toma múltiples ángulos.</li>
+          <li>Optimiza el modelo &lt; 12&nbsp;MB, texturas 2K.</li>
+        </ul>
+        <div class="pill">Fallback: si el navegador no soporta WebXR, mostramos el modelo 3D 2D/360°.</div>
+      </div>
+    </section>
+
+    <!-- Panel derecho: visor -->
+    <section class="card">
+      <model-viewer id="mv" camera-controls ar ar-modes="webxr scene-viewer quick-look"
+        shadow-intensity="1" exposure="1" auto-rotate autoplay
+        environment-image="neutral" poster=""
+        alt="Platillo en 3D">
+        <div slot="ar-button" style="position:absolute;right:16px;bottom:16px;">
+          <button>Ver en AR</button>
+        </div>
+        <div id="mvPoster" slot="poster">Cargando modelo…</div>
+      </model-viewer>
+      <div class="mv-footer">
+        <div class="row">
+          <span id="tagName" class="tag">—</span>
+          <span id="tagSize" class="tag">Tamaño real aprox.</span>
+        </div>
+        <div class="price" id="priceTag">$ —</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // === Configuración de platillos (mapea slug -> modelo, nombre, precio) ===
+    // Reemplaza las URLs por tus rutas (ideal: CDN propio /bucket S3/Cloudflare R2)
+    const DISHES = {
+      "bolonesa": {
+        name: "Spaghetti a la Boloñesa",
+        price: 189,
+        glb: "models/bolonesa.glb",
+        usdz: "models/bolonesa.usdz",
+        scale: "1 1 1"
+      }
+    };
+
+    // — Utilidades
+    const $ = sel => document.querySelector(sel);
+    const params = new URLSearchParams(location.search);
+    const mv = $("#mv");
+
+    // Poblar selector
+    const select = $("#platoSelect");
+    for (const [slug, cfg] of Object.entries(DISHES)){
+      const opt = document.createElement("option");
+      opt.value = slug; opt.textContent = cfg.name;
+      select.appendChild(opt);
+    }
+
+    // Resolver plato inicial por ?plato=slug (default: primera entrada)
+    function getInitialSlug(){
+      const p = params.get("plato");
+      if (p && DISHES[p]) return p;
+      return Object.keys(DISHES)[0];
+    }
+
+    function applyDish(slug){
+      const cfg = DISHES[slug];
+      if (!cfg) return;
+      // model-viewer soporta GLB (web) + USDZ (AR en iOS Quick Look)
+      mv.src = cfg.glb;
+      mv.setAttribute("ios-src", cfg.usdz);
+      mv.setAttribute("scale", cfg.scale);
+
+      // UI
+      $("#tagName").textContent = cfg.name;
+      $("#priceTag").textContent = `$ ${cfg.price}`;
+
+      // URL de compartido
+      const u = new URL(location.href);
+      u.searchParams.set("plato", slug);
+      $("#shareUrl").value = u.toString();
+
+      // Selector
+      select.value = slug;
+    }
+
+    // Botones
+    $("#btnLoad").addEventListener("click", ()=> applyDish(select.value));
+    $("#btnCopy").addEventListener("click", async ()=>{
+      try{ await navigator.clipboard.writeText($("#shareUrl").value); alert("URL copiada ✅"); }
+      catch{ prompt("Copia la URL:", $("#shareUrl").value); }
+    });
+    $("#btnAR").addEventListener("click", ()=>{
+      // Abrir flujo AR del componente (simula clic al botón nativo)
+      const arBtn = mv.shadowRoot?.querySelector("button[slot=ar-button], button#default-ar-button, button");
+      arBtn?.click();
+    });
+
+    // Inicio
+    const initial = getInitialSlug();
+    applyDish(initial);
+  </script>
+</body>
+</html>
